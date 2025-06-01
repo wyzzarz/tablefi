@@ -1,5 +1,7 @@
 use regex::Regex;
 use rust_decimal::Decimal;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::{Value};
 use std::str::FromStr;
 
 /// Represents a single cell in a table, which can either contain text or a number.
@@ -34,6 +36,38 @@ impl Default for Cell {
 
     fn default() -> Self {
         Cell::Text("".to_string())
+    }
+
+}
+
+impl Serialize for Cell {
+
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> 
+    where
+        S: Serializer,
+    {
+        // serialize numbers as strings to maintain precision
+        self.to_string().serialize(serializer)
+    }
+
+}
+
+impl<'de> Deserialize<'de> for Cell {
+
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let val = Value::deserialize(deserializer)?;
+        let str = match val {
+            Value::String(s) => s,
+            Value::Number(n) => n.to_string(),
+            Value::Bool(b) => b.to_string(),
+            Value::Null => String::new(),
+            Value::Array(a) => serde_json::to_string(&a).unwrap_or_default(),
+            Value::Object(o) => serde_json::to_string(&o).unwrap_or_default(),
+        };
+        Ok(Cell::from(str))
     }
 
 }
@@ -184,6 +218,24 @@ mod tests {
         assert!(TryInto::<Decimal>::try_into(Cell::from("\"-123,456,781\"")).is_err());
         assert!(TryInto::<Decimal>::try_into(Cell::from("'-123,456,781'")).is_err());
         assert!(TryInto::<Decimal>::try_into(Cell::from("-12a,456,781")).is_err());
+    }
+
+    #[test]
+    fn test_json() {
+        let cell: Cell = serde_json::from_str(r#""hello""#).unwrap();
+        assert_eq!(cell.to_string(), "hello");
+        let cell: Cell = serde_json::from_str(r#""12345.67""#).unwrap();
+        assert_eq!(cell.to_decimal(), Some(Decimal::new(1234567, 2)));
+        let cell: Cell = serde_json::from_str(r#"12345.67"#).unwrap();
+        assert_eq!(cell.to_decimal(), Some(Decimal::new(1234567, 2)));
+        let cell: Cell = serde_json::from_str(r#"true"#).unwrap();
+        assert_eq!(cell.to_string(), "true");
+        let cell: Cell = serde_json::from_str(r#"null"#).unwrap();
+        assert_eq!(cell.to_string(), "");
+        let cell: Cell = serde_json::from_str(r#"["a"]"#).unwrap();
+        assert_eq!(cell.to_string(), r#"["a"]"#);
+        let cell: Cell = serde_json::from_str(r#"{"a":1}"#).unwrap();
+        assert_eq!(cell.to_string(), r#"{"a":1}"#);
     }
 
     #[test]
