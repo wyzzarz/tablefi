@@ -2,7 +2,10 @@ use regex::Regex;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Value};
+use std::ops::{Add, Sub, Mul, Div};
 use std::str::FromStr;
+
+pub const DIV0: &str = "#DIV/0";
 
 /// Represents a single cell in a table, which can either contain text or a number.
 ///
@@ -23,6 +26,12 @@ use std::str::FromStr;
 /// // or
 /// let text_cell = Cell::from("12,345.67");
 /// assert_eq!(num_cell.to_string(), "12345.67");
+/// 
+/// // Adding two cells
+/// let number1 = Cell::from("123.456");
+/// let number2 = Cell::from("8");
+/// let mut number3 = &number1 + &number2;
+/// number3.add_value(Decimal::from(8));
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub enum Cell {
@@ -133,6 +142,66 @@ impl TryFrom<Cell> for Decimal {
 
 }
 
+impl Add<&Cell> for &Cell {
+
+    type Output = Cell;
+
+    fn add(self, other: &Cell) -> Cell {
+        if self.is_number() && other.is_number() {
+            Cell::Number(self.to_decimal().unwrap() + other.to_decimal().unwrap())
+        } else {
+            self.clone()
+        }
+    }
+
+}
+
+impl Sub<&Cell> for &Cell {
+
+    type Output = Cell;
+
+    fn sub(self, other: &Cell) -> Cell {
+        if self.is_number() && other.is_number() {
+            Cell::Number(self.to_decimal().unwrap() - other.to_decimal().unwrap())
+        } else {
+            self.clone()
+        }
+    }
+
+}
+
+impl Mul<&Cell> for &Cell {
+
+    type Output = Cell;
+
+    fn mul(self, other: &Cell) -> Cell {
+        if self.is_number() && other.is_number() {
+            Cell::Number(self.to_decimal().unwrap() * other.to_decimal().unwrap())
+        } else {
+            self.clone()
+        }
+    }
+
+}
+
+impl Div<&Cell> for &Cell {
+    
+    type Output = Cell;
+
+    fn div(self, other: &Cell) -> Cell {
+        if self.is_number() && other.is_number() {
+            let other_val = other.to_decimal().unwrap();
+            if other_val.is_zero() {
+                return Cell::from(DIV0);
+            }
+            Cell::Number(self.to_decimal().unwrap() / other_val)
+        } else {
+            self.clone()
+        }
+    }
+
+}
+
 impl Cell {
 
     /// Whether this cell contains textual data.
@@ -156,6 +225,42 @@ impl Cell {
     /// Replaces the cell with a new value.
     pub fn replace_value(&mut self, new_value: &Cell) {
         *self = new_value.clone();
+    }
+
+    /// Adds value.
+    pub fn add_value(&mut self, value: Decimal) {
+        if let Cell::Number(d) = self {
+            *d += value;
+        }
+    }
+
+    /// Subtracts value.
+    pub fn sub_value(&mut self, value: Decimal) {
+        if let Cell::Number(d) = self {
+            *d -= value;
+        }
+    }
+
+    /// Multiplies value.
+    pub fn mul_value(&mut self, value: Decimal) {
+        if let Cell::Number(d) = self {
+            *d *= value;
+        }
+    }
+
+    /// Divides value.
+    pub fn div_value(&mut self, value: Decimal) {
+        if let Cell::Number(d) = self {
+            match value.is_zero() {
+                true => *self = Cell::from(DIV0),
+                false => *d /= value,
+            }
+        }
+    }
+
+    /// Whether the value of the cell has been divided by zero.
+    pub fn is_divide_by_zero(&self) -> bool {
+        self.to_string() == DIV0
     }
 
 }
@@ -263,6 +368,53 @@ mod tests {
         assert_eq!(cell.to_decimal(), Some(Decimal::new(123456, 3)));
         cell.replace_value(&Cell::from("abcd"));
         assert_eq!(cell.to_string(), "abcd".to_string());
+    }
+
+    #[test]
+    fn test_cell_add() {
+        let number1 = Cell::from("123.456");
+        let number2 = Cell::from("8");
+        assert_eq!((&number1 + &number2).to_decimal(), Some(Decimal::new(131456, 3)));
+        let text1 = Cell::from("abcd");
+        assert_eq!((&text1 + &number2).to_string(), "abcd".to_string());
+        let mut number3 = number1.clone();
+        number3.add_value(Decimal::from(8));
+        assert_eq!(number3.to_decimal(), Some(Decimal::new(131456, 3)));
+    }
+
+    #[test]
+    fn test_cell_sub() {
+        let number1 = Cell::from("123.456");
+        let number2 = Cell::from("8");
+        assert_eq!((&number1 - &number2).to_decimal(), Some(Decimal::new(115456, 3)));
+        let mut number3 = number1.clone();
+        number3.sub_value(Decimal::from(8));
+        assert_eq!(number3.to_decimal(), Some(Decimal::new(115456, 3)));
+    }
+
+    #[test]
+    fn test_cell_mul() {
+        let number1 = Cell::from("123.456");
+        let number2 = Cell::from("8");
+        assert_eq!((&number1 * &number2).to_decimal(), Some(Decimal::new(987648, 3)));
+        let mut number3 = number1.clone();
+        number3.mul_value(Decimal::from(8));
+        assert_eq!(number3.to_decimal(), Some(Decimal::new(987648, 3)));
+    }
+
+    #[test]
+    fn test_cell_div() {
+        let number1 = Cell::from("123.456");
+        let number2 = Cell::from("8");
+        assert_eq!((&number1 / &number2).to_decimal(), Some(Decimal::new(15432, 3)));
+        assert!((&number1 / &Cell::from("0")).to_decimal().is_none());
+        assert!((&number1 / &Cell::from("0")).is_divide_by_zero());
+        let mut number3 = number1.clone();
+        number3.div_value(Decimal::from(8));
+        assert_eq!(number3.to_decimal(), Some(Decimal::new(15432, 3)));
+        number3.div_value(Decimal::from(0));
+        assert!(number3.to_decimal().is_none());
+        assert!(number3.is_divide_by_zero());
     }
 
 }
