@@ -1,6 +1,7 @@
 use grid::{Grid, Order};
 use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
 pub use super::Cell;
+pub use super::Slice;
 
 /// Represents a 2-dimensional table structure holding `Cell` data.
 /// 
@@ -95,9 +96,21 @@ impl Table {
         self.grid().cols()
     }
 
+    /// Returns a column at the specified index.
+    pub fn col(&self, col: usize) -> Option<Slice> {
+        if col >= self.grid.cols() { return None; }
+        Some(Slice::from_iter(self.grid.iter_col(col).cloned()))
+    }
+
     /// Returns the number of rows in the table.
     pub fn rows(&self) -> usize {
         self.grid().rows()
+    }
+
+    /// Returns a row at the specified index.
+    pub fn row(&self, row: usize) -> Option<Slice> {
+        if row >= self.grid.rows() { return None; }
+        Some(Slice::from_iter(self.grid.iter_row(row).cloned()))
     }
 
 }
@@ -128,5 +141,41 @@ mod tests {
         assert_eq!(table.cell(0, 1).unwrap().to_string(), "b".to_string());
         assert_eq!(table.cell(1, 1).unwrap().to_decimal(), Some(Decimal::from(2)));
     }
+
+    #[test]
+    fn test_columns() {
+        let table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
+        assert_eq!(table.cols(), 3);
+        let col0 = table.col(0).unwrap();
+        assert_eq!(col0.len(), 2);
+        assert_eq!(col0.cell(0).to_string(), "a".to_string());
+        assert_eq!(col0.cell(1).to_decimal(), Some(Decimal::from(1)));
+        let col1 = table.col(1).unwrap();
+        assert_eq!(col1.len(), 2);
+        assert_eq!(col1.cell(0).to_string(), "b".to_string());
+        assert_eq!(col1.cell(1).to_decimal(), Some(Decimal::from(2)));
+        let col2 = table.col(2).unwrap();
+        assert_eq!(col2.len(), 2);
+        assert_eq!(col2.cell(0).to_string(), "c".to_string());
+        assert_eq!(col2.cell(1).to_decimal(), Some(Decimal::from(3)));
+        assert!(table.col(3).is_none());
+    }
+
+    #[test]
+    fn test_rows() {
+        let table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
+        assert_eq!(table.rows(), 2);
+        let row0 = table.row(0).unwrap();
+        assert_eq!(row0.len(), 3);
+        assert_eq!(row0.cell(0).to_string(), "a".to_string());
+        assert_eq!(row0.cell(1).to_string(), "b".to_string());
+        assert_eq!(row0.cell(2).to_string(), "c".to_string());
+        let row1 = table.row(1).unwrap();
+        assert_eq!(row1.len(), 3);
+        assert_eq!(row1.cell(0).to_decimal(), Some(Decimal::from(1)));
+        assert_eq!(row1.cell(1).to_decimal(), Some(Decimal::from(2)));
+        assert_eq!(row1.cell(2).to_decimal(), Some(Decimal::from(3)));
+        assert!(table.row(2).is_none());
+    } 
 
 }

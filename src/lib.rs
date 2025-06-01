@@ -1,6 +1,6 @@
 pub mod table;
 
-pub use table::{Cell, Table};
+pub use table::{Cell, Slice, Table};
 
 #[cfg(test)]
 mod tests {
