@@ -1,5 +1,6 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::ops::{Add, Sub, Mul, Div};
 use super::cell::Cell;
 
 /// Represents a one-dimensional sequence of `Cell`s, typically a row or a column from a `Table`.
@@ -14,6 +15,12 @@ use super::cell::Cell;
 /// assert_eq!(slice_from_strings.len(), 2);
 /// assert_eq!(slice_from_strings.cell(0).to_string(), "hello");
 /// assert_eq!(slice_from_strings.cell(1).to_decimal(), Some(Decimal::from(123)));
+/// 
+/// // Adding two slices
+/// let slice1: Slice = Slice::try_from(r#"["1","2","3"]"#).unwrap();
+/// let slice2: Slice = Slice::try_from(r#"["4","5","6"]"#).unwrap();
+/// let mut slice3 = &slice1 + &slice2;
+/// slice3.add_value(Decimal::from(1));
 /// ```
 #[derive(Clone, Debug, Default)]
 pub struct Slice {
@@ -139,6 +146,74 @@ impl<'a> FromIterator<&'a str> for Slice {
 
 }
 
+impl Add<&Slice> for &Slice {
+
+    type Output = Slice;
+
+    fn add(self, other: &Slice) -> Slice {
+        let default_value = Decimal::from(0);
+        let mut new_cells: Vec<Cell> = self.cells.clone();
+        for (i, cell) in new_cells.iter_mut().enumerate() {
+            if let Some(other_cell) = other.cells.get(i) {
+                cell.add_value(other_cell.to_decimal().unwrap_or(default_value));
+            }
+        }
+        Slice { cells: new_cells }
+    }
+
+}
+
+impl Sub<&Slice> for &Slice {
+
+    type Output = Slice;
+
+    fn sub(self, other: &Slice) -> Slice {
+        let default_value = Decimal::from(0);
+        let mut new_cells: Vec<Cell> = self.cells.clone();
+        for (i, cell) in new_cells.iter_mut().enumerate() {
+            if let Some(other_cell) = other.cells.get(i) {
+                cell.sub_value(other_cell.to_decimal().unwrap_or(default_value));
+            }
+        }
+        Slice { cells: new_cells }
+    }
+
+}
+
+impl Mul<&Slice> for &Slice {
+
+    type Output = Slice;
+
+    fn mul(self, other: &Slice) -> Slice {
+        let default_value = Decimal::from(1);
+        let mut new_cells: Vec<Cell> = self.cells.clone();
+        for (i, cell) in new_cells.iter_mut().enumerate() {
+            if let Some(other_cell) = other.cells.get(i) {
+                cell.mul_value(other_cell.to_decimal().unwrap_or(default_value));
+            }
+        }
+        Slice { cells: new_cells }
+    }
+
+}
+
+impl Div<&Slice> for &Slice {
+
+    type Output = Slice;
+
+    fn div(self, other: &Slice) -> Slice {
+        let default_value = Decimal::from(1);
+        let mut new_cells: Vec<Cell> = self.cells.clone();
+        for (i, cell) in new_cells.iter_mut().enumerate() {
+            if let Some(other_cell) = other.cells.get(i) {
+                cell.div_value(other_cell.to_decimal().unwrap_or(default_value));
+            }
+        }
+        Slice { cells: new_cells }
+    }
+
+}
+
 impl Slice {
 
     /// Provides an immutable reference to the underlying vector of `Cell`s.
@@ -159,6 +234,38 @@ impl Slice {
     /// Gets a mutable `Cell` at the specified index.
     pub fn mut_cell(&mut self, idx: usize) -> Option<&mut Cell> {
         self.cells.get_mut(idx)
+    }
+
+    /// Adds value to all numerical cells in the slice.  Non-numerical cells will be unchanged.
+    pub fn add_value(&mut self, value: Decimal) -> &mut Self {
+        for cell in self.cells.iter_mut() {
+            cell.add_value(value);
+        }
+        self
+    }
+
+    /// Subtracts value from all numerical cells in the slice.  Non-numerical cells will be unchanged.
+    pub fn sub_value(&mut self, value: Decimal) -> &mut Self {
+        for cell in self.cells.iter_mut() {
+            cell.sub_value(value);
+        }
+        self
+    }
+
+    /// Multiplies value to all numerical cells in the slice.  Non-numerical cells will be unchanged.
+    pub fn mul_value(&mut self, value: Decimal) -> &mut Self {
+        for cell in self.cells.iter_mut() {
+            cell.mul_value(value);
+        }
+        self
+    }
+
+    /// Divides value from all numerical cells in the slice.  A value of `0` will result in `#DIV/O`.
+    pub fn div_value(&mut self, value: Decimal) -> &mut Self {
+        for cell in self.cells.iter_mut() {
+            cell.div_value(value);
+        }
+        self
     }
 
 }
@@ -202,6 +309,76 @@ mod tests {
         let cell = slice.mut_cell(1).unwrap();
         cell.replace_value(&Cell::from("c"));
         assert_eq!(slice.to_string(), r#"["a","c","1"]"#);
+    }
+
+    #[test]
+    fn test_add() {
+        let slice1: Slice = Slice::try_from(r#"["1","2","3"]"#).unwrap();
+        let slice2: Slice = Slice::try_from(r#"["4","5","6"]"#).unwrap();
+        let mut slice3 = &slice1 + &slice2;
+        assert_eq!(slice3.to_string(), r#"["5","7","9"]"#);
+        slice3.add_value(Decimal::from(1));
+        assert_eq!(slice3.to_string(), r#"["6","8","10"]"#);
+        let slice4: Slice = Slice::try_from(r#"["4","a","6"]"#).unwrap();
+        let mut slice5 = &slice1 + &slice4;
+        assert_eq!(slice5.to_string(), r#"["5","2","9"]"#);
+        slice5 = &slice4 + &slice1;
+        assert_eq!(slice5.to_string(), r#"["5","a","9"]"#);
+        slice5.add_value(Decimal::from(1));
+        assert_eq!(slice5.to_string(), r#"["6","a","10"]"#);
+    }
+
+    #[test]
+    fn test_sub() {
+        let slice1: Slice = Slice::try_from(r#"["1","2","3"]"#).unwrap();
+        let slice2: Slice = Slice::try_from(r#"["4","7","10"]"#).unwrap();
+        let mut slice3 = &slice1 - &slice2;
+        assert_eq!(slice3.to_string(), r#"["-3","-5","-7"]"#);
+        slice3.sub_value(Decimal::from(1));
+        assert_eq!(slice3.to_string(), r#"["-4","-6","-8"]"#);
+        let slice4: Slice = Slice::try_from(r#"["4","a","7"]"#).unwrap();
+        let mut slice5 = &slice1 - &slice4;
+        assert_eq!(slice5.to_string(), r#"["-3","2","-4"]"#);
+        slice5 = &slice4 - &slice1;
+        assert_eq!(slice5.to_string(), r#"["3","a","4"]"#);
+        slice5.sub_value(Decimal::from(1));
+        assert_eq!(slice5.to_string(), r#"["2","a","3"]"#);
+    }
+
+    #[test]
+    fn test_mul() {
+        let slice1: Slice = Slice::try_from(r#"["1","2","3"]"#).unwrap();
+        let slice2: Slice = Slice::try_from(r#"["2","3","4"]"#).unwrap();
+        let mut slice3 = &slice1 * &slice2;
+        assert_eq!(slice3.to_string(), r#"["2","6","12"]"#);
+        slice3.mul_value(Decimal::from(2));
+        assert_eq!(slice3.to_string(), r#"["4","12","24"]"#);
+        let slice4: Slice = Slice::try_from(r#"["4","a","5"]"#).unwrap();
+        let mut slice5 = &slice1 * &slice4;
+        assert_eq!(slice5.to_string(), r#"["4","2","15"]"#);
+        slice5 = &slice4 * &slice1;
+        assert_eq!(slice5.to_string(), r#"["4","a","15"]"#);
+        slice5.mul_value(Decimal::from(2));
+        assert_eq!(slice5.to_string(), r#"["8","a","30"]"#);
+    }
+
+    #[test]
+    fn test_div() {
+        let slice1: Slice = Slice::try_from(r#"["1","2","3"]"#).unwrap();
+        let slice2: Slice = Slice::try_from(r#"["2","8","15"]"#).unwrap();
+        let mut slice3 = &slice1 / &slice2;
+        assert_eq!(slice3.to_string(), r#"["0.50","0.25","0.20"]"#);
+        slice3.div_value(Decimal::from(2));
+        assert_eq!(slice3.to_string(), r#"["0.25","0.1250","0.10"]"#);
+        let slice4: Slice = Slice::try_from(r#"["4","a","6"]"#).unwrap();
+        let mut slice5 = &slice1 / &slice4;
+        assert_eq!(slice5.to_string(), r#"["0.25","2","0.50"]"#);
+        slice5 = &slice4 / &slice1;
+        assert_eq!(slice5.to_string(), r#"["4","a","2"]"#);
+        slice5.div_value(Decimal::from(2));
+        assert_eq!(slice5.to_string(), r#"["2","a","1"]"#);
+        slice5.div_value(Decimal::from(0));
+        assert_eq!(slice5.to_string(), r##"["#DIV/0","a","#DIV/0"]"##);
     }
 
 }
