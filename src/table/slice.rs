@@ -156,6 +156,11 @@ impl Slice {
         self.cells()[idx].clone()
     }
 
+    /// Gets a mutable `Cell` at the specified index.
+    pub fn mut_cell(&mut self, idx: usize) -> Option<&mut Cell> {
+        self.cells.get_mut(idx)
+    }
+
 }
 
 #[cfg(test)]
@@ -189,6 +194,14 @@ mod tests {
         assert_eq!(slice.cell(2).to_string(), "1".to_string());
         assert_eq!(slice.cell(2).to_decimal(), Some(Decimal::from(1)));
         assert_eq!(slice.to_string(), r#"["a","b","1"]"#);
+    }
+
+    #[test]
+    fn test_mut_cell() {
+        let mut slice: Slice = Slice::try_from(r#"["a","b","1"]"#).unwrap();
+        let cell = slice.mut_cell(1).unwrap();
+        cell.replace_value(&Cell::from("c"));
+        assert_eq!(slice.to_string(), r#"["a","c","1"]"#);
     }
 
 }

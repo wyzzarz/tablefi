@@ -91,6 +91,11 @@ impl Table {
         self.grid().get(row, col).cloned()
     }
 
+    /// Returns a mutable reference to the cell at the specified row and column.
+    pub fn mut_cell(&mut self, row: usize, col: usize) -> Option<&mut Cell> {
+        self.grid.get_mut(row, col)
+    }
+
     /// Returns the number of columns in the table.
     pub fn cols(&self) -> usize {
         self.grid().cols()
@@ -188,6 +193,14 @@ mod tests {
         let table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
         assert_eq!(table.cell(0, 1).unwrap().to_string(), "b".to_string());
         assert_eq!(table.cell(1, 1).unwrap().to_decimal(), Some(Decimal::from(2)));
+    }
+
+    #[test]
+    fn test_mut_cell() {
+        let mut table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
+        let cell = table.mut_cell(1, 1).unwrap();
+        cell.replace_value(&Cell::from("d"));
+        assert_eq!(table.to_string(), r#"[["a","b","c"],["1","d","3"]]"#);
     }
 
     #[test]

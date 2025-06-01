@@ -153,6 +153,11 @@ impl Cell {
         TryInto::<Decimal>::try_into(self.clone()).ok()
     }
 
+    /// Replaces the cell with a new value.
+    pub fn replace_value(&mut self, new_value: &Cell) {
+        *self = new_value.clone();
+    }
+
 }
 
 #[cfg(test)]
@@ -250,6 +255,14 @@ mod tests {
         let cell = Cell::Number(Decimal::from(12345));
         assert!(!cell.is_text());
         assert!(cell.is_number());
+    }
+
+    #[test]
+    fn test_cell_replace() {
+        let mut cell = Cell::from("123.456");
+        assert_eq!(cell.to_decimal(), Some(Decimal::new(123456, 3)));
+        cell.replace_value(&Cell::from("abcd"));
+        assert_eq!(cell.to_string(), "abcd".to_string());
     }
 
 }
