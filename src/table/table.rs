@@ -137,6 +137,30 @@ impl Table {
         Some(Slice::from_iter(self.grid.iter_row(row).cloned()))
     }
 
+    /// Inserts a new row at the specified index.
+    pub fn insert_row(&mut self, idx: usize, cells: Vec<Cell>) {
+        self.grid.insert_row(idx, cells.clone());
+    }
+
+    /// Appends a new row to the table.
+    pub fn push_row(&mut self, cells: Vec<Cell>) {
+        self.grid.insert_row(self.rows(), cells);
+    }
+
+    /// Removes a row from the table at the specified index.
+    pub fn remove_row(&mut self, idx: usize) -> Option<Slice> {
+        match self.grid.remove_row(idx) {
+            Some(cells) => Some(Slice::from(cells)),
+            None => None,
+        }
+    }
+
+    /// Replaces a row at the specified index with a new row.
+    pub fn replace_row(&mut self, idx: usize, new_cells: Vec<Cell>) -> Option<Slice> {
+        self.insert_row(idx, new_cells);
+        self.remove_row(idx + 1)
+    }
+
 }
 
 #[cfg(test)]
@@ -229,5 +253,33 @@ mod tests {
         assert_eq!(row1.cell(2).to_decimal(), Some(Decimal::from(3)));
         assert!(table.row(2).is_none());
     } 
+
+    #[test]
+    fn test_insert_row() {
+        let mut table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
+        table.insert_row(1, vec![Cell::from("d"), Cell::from("e"), Cell::from("4")]);
+        assert_eq!(table.to_string(), r#"[["a","b","c"],["d","e","4"],["1","2","3"]]"#);
+    }
+
+    #[test]
+    fn test_push_row() {
+        let mut table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
+        table.push_row(vec![Cell::from("d"), Cell::from("e"), Cell::from("4")]);
+        assert_eq!(table.to_string(), r#"[["a","b","c"],["1","2","3"],["d","e","4"]]"#);
+    }
+
+    #[test]
+    fn test_remove_row() {
+        let mut table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
+        table.remove_row(0);
+        assert_eq!(table.to_string(), r#"[["1","2","3"]]"#);
+    }
+
+    #[test]
+    fn test_replace_row() {
+        let mut table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
+        table.replace_row(0, vec![Cell::from("d"), Cell::from("e"), Cell::from("4")]);
+        assert_eq!(table.to_string(), r#"[["d","e","4"],["1","2","3"]]"#);
+    }
 
 }
