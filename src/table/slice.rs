@@ -154,6 +154,33 @@ impl<'a> FromIterator<&'a str> for Slice {
 
 }
 
+impl<'a> IntoIterator for &'a Slice {
+    type Item = &'a Cell;
+    type IntoIter = std::slice::Iter<'a, Cell>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a mut Slice {
+    type Item = &'a mut Cell;
+    type IntoIter = std::slice::IterMut<'a, Cell>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
+impl IntoIterator for Slice {
+    type Item = Cell;
+    type IntoIter = std::vec::IntoIter<Cell>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.cells.into_iter()
+    }
+}
+
 impl Add<&Slice> for &Slice {
 
     type Output = Slice;
@@ -276,6 +303,21 @@ impl Slice {
         self
     }
 
+    /// Returns an iterator over the cells in the slice.
+    pub fn iter(&self) -> std::slice::Iter<'_, Cell> {
+        self.cells.iter()
+    }
+
+    /// Returns a mutable iterator over the cells in the slice.
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, Cell> {
+        self.cells.iter_mut()
+    }
+
+    /// Consumes the `Slice` and returns an iterator over its `Cell`s.
+    pub fn into_iter(self) -> std::vec::IntoIter<Cell> {
+        self.cells.into_iter()
+    }
+
 }
 
 #[cfg(test)]
@@ -387,6 +429,56 @@ mod tests {
         assert_eq!(slice5.to_string(), r#"["2","a","1"]"#);
         slice5.div_value(Decimal::from(0));
         assert_eq!(slice5.to_string(), r##"["#DIV/0","a","#DIV/0"]"##);
+    }
+
+    #[test]
+    fn test_iter_method() {
+        let slice: Slice = Slice::try_from(r#"["10","20","hello"]"#).unwrap();
+        let mut iter = slice.iter();
+        assert_eq!(iter.next(), Some(&Cell::from("10")));
+        assert_eq!(iter.next(), Some(&Cell::from("20")));
+        assert_eq!(iter.next(), Some(&Cell::from("hello")));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_into_iterator() {
+        let slice: Slice = Slice::try_from(r#"["1","2"]"#).unwrap();
+        let mut collected_cells = Vec::new();
+        // Uses IntoIterator for &Slice
+        for cell_ref in &slice { 
+            collected_cells.push(cell_ref.clone());
+        }
+        assert_eq!(collected_cells, vec![Cell::from("1"), Cell::from("2")]);
+    }
+
+    #[test]
+    fn test_into_iterator_consuming() {
+        let slice: Slice = Slice::try_from(r#"["a","b"]"#).unwrap();
+        // The for loop consumes `slice` because `Slice` implements `IntoIterator`
+        let cells: Vec<Cell> = slice.into_iter().collect();
+        assert_eq!(cells, vec![Cell::from("a"), Cell::from("b")]);
+    }
+
+    #[test]
+    fn test_iter_mut_and_into_iterator_mut() {
+        let mut slice: Slice = Slice::try_from(r#"["10","str","20"]"#).unwrap();
+
+        // Using iter_mut() directly
+        for cell_mut_ref in slice.iter_mut() {
+            if cell_mut_ref.to_decimal().is_some() {
+                cell_mut_ref.add_value(Decimal::from(1));
+            }
+        }
+        assert_eq!(slice.to_string(), r#"["11","str","21"]"#);
+
+        // Using IntoIterator for &mut Slice
+        for cell_mut_ref in &mut slice {
+             if cell_mut_ref.to_decimal().is_some() {
+                cell_mut_ref.mul_value(Decimal::from(2));
+            }
+        }
+        assert_eq!(slice.to_string(), r#"["22","str","42"]"#);
     }
 
 }
