@@ -1,5 +1,6 @@
 use grid::{Grid, Order};
 use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
+use std::io::Write;
 pub use super::Cell;
 pub use super::Slice;
 
@@ -25,6 +26,10 @@ pub use super::Slice;
 /// let mut slice = table.row(1).unwrap();
 /// slice.add_value(Decimal::from(1));
 /// table.replace_row(1, slice);
+/// 
+/// // output table as csv
+/// let mut writer: Vec<u8> = Vec::new();
+/// assert!(table.write_csv(&mut writer).is_ok());
 /// ```
 #[derive(Clone, Debug, Default)]
 pub struct Table {
@@ -172,6 +177,42 @@ impl Table {
         let old_row = self.remove_row(idx);
         self.insert_row(idx, new_row);
         old_row
+    }
+
+    /// Writes the table as csv.
+    pub fn write_csv<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        for row_iter in self.grid.iter_rows() {
+            let mut first_cell = true;
+            for cell in row_iter {
+                match first_cell {
+                    true => first_cell = false,
+                    false => writer.write_all(b",")?,
+                }
+                let s = cell.to_string();
+                // per RFC 4180, double quotes require two consecutive double quotes ("")
+                let quotes = s.contains(r#"""#);
+                // per RFC 4180, commas, double quotes, and line breaks require the field to be enclosed by double quote
+                let escaping = s.contains(',')
+                    || s.contains('\n')
+                    || s.contains('\r');
+                if quotes || escaping { writer.write_all(b"\"")?; }
+                if quotes {
+                    writer.write_all(s.replace(r#"""#, r#""""#).as_bytes())?;
+                } else {
+                    writer.write_all(s.as_bytes())?;
+                }
+                if quotes || escaping { writer.write_all(b"\"")?; }
+            }
+            writer.write_all(b"\n")?
+        }
+        Ok(())
+    }
+
+    /// Formats the table as csv.
+    pub fn to_csv(&self) -> Result<String, std::io::Error> {
+        let mut writer: Vec<u8> = Vec::new();
+        self.write_csv(&mut writer)?;
+        Ok(String::from_utf8(writer).unwrap())
     }
 
 }
@@ -340,6 +381,24 @@ mod tests {
         slice3.add_value(Decimal::from(1));
         table.replace_row(2, slice3);
         assert_eq!(table.to_string(), r#"[["1","2","3"],["4","5","6"],["6","8","10"]]"#);
+    }
+
+    #[test]
+    fn test_write_csv() {
+        // test per RFC 4180
+        // quoting for comma, double qoute or line break
+        let table: Table = Table::try_from(r##"[["1","2","3"],["ano\"ther","lo\nng","stri\rng"],["xr,ay","y","z"]]"##).unwrap();
+        let mut writer: Vec<u8> = Vec::new();
+        assert!(table.write_csv(&mut writer).is_ok());
+        assert_eq!(writer, b"1,2,3\n\"ano\"\"ther\",\"lo\nng\",\"stri\rng\"\n\"xr,ay\",y,z\n");
+    }
+
+    #[test]
+    fn test_to_csv() {
+        // test per RFC 4180
+        // quoting for comma, double qoute or line break
+        let table: Table = Table::try_from(r##"[["1","2","3"],["ano\"ther","lo\nng","stri\rng"],["xr,ay","y","z"]]"##).unwrap();
+        assert_eq!(table.to_csv().unwrap(), "1,2,3\n\"ano\"\"ther\",\"lo\nng\",\"stri\rng\"\n\"xr,ay\",y,z\n");
     }
 
 }
