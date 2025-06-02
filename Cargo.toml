@@ -1,6 +1,6 @@
 [package]
 name = "tablefi"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Warner Zee <warner@zoynk.com>"]
@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/wyzzarz/tablefi"
 readme = "README.md"
 description = "Simple table to store, manipulate and format tabular data."
-keywords = ["tables", "tabular", "grid", "data-structure", "matrix"]
+keywords = ["tables", "tabular", "grid", "arithmetic", "csv"]
 categories = ["finance", "mathematics", "data-structures", "value-formatting", "parser-implementations"]
 include = [
     "/examples",
