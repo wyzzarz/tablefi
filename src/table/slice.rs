@@ -66,6 +66,14 @@ impl ToString for Slice {
 
 }
 
+impl From<Slice> for Vec<Cell> {
+
+    fn from(slice: Slice) -> Self {
+        slice.cells
+    }
+
+}
+
 impl From<Vec<Cell>> for Slice {
     
     fn from(vec: Vec<Cell>) -> Self {

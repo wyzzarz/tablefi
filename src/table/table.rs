@@ -8,6 +8,7 @@ pub use super::Slice;
 /// # Examples
 ///
 /// ```
+/// use rust_decimal::Decimal;
 /// use tablefi::Table;
 ///
 /// // create an empty table
@@ -16,9 +17,14 @@ pub use super::Slice;
 /// assert_eq!(table.rows(), 0);
 /// 
 /// // create table from json string
-/// let table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
+/// let mut table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
 /// assert_eq!(table.cols(), 3);
 /// assert_eq!(table.rows(), 2);
+/// 
+/// // perform addition
+/// let mut slice = table.row(1).unwrap();
+/// slice.add_value(Decimal::from(1));
+/// table.replace_row(1, slice);
 /// ```
 #[derive(Clone, Debug, Default)]
 pub struct Table {
@@ -108,13 +114,13 @@ impl Table {
     }
 
     /// Inserts a new column at the specified index.
-    pub fn insert_col(&mut self, idx: usize, cells: Vec<Cell>) {
-        self.grid.insert_col(idx, cells.clone());
+    pub fn insert_col<C: Into<Vec<Cell>>>(&mut self, idx: usize, new_col: C) {
+        self.grid.insert_col(idx, new_col.into());
     }
 
     /// Appends a new column to the table.
-    pub fn push_col(&mut self, cells: Vec<Cell>) {
-        self.grid.insert_col(self.cols(), cells);
+    pub fn push_col<C: Into<Vec<Cell>>>(&mut self, new_col: C) {
+        self.grid.insert_col(self.cols(), new_col.into());
     }
 
     /// Removes a column from the table at the specified index.
@@ -126,9 +132,10 @@ impl Table {
     }
 
     /// Replaces a column at the specified index with a new column.
-    pub fn replace_col(&mut self, idx: usize, new_cells: Vec<Cell>) -> Option<Slice> {
-        self.insert_col(idx, new_cells);
-        self.remove_col(idx + 1)
+    pub fn replace_col<C: Into<Vec<Cell>>>(&mut self, idx: usize, new_col: C) -> Option<Slice> {
+        let old_col = self.remove_col(idx);
+        self.insert_col(idx, new_col);
+        old_col
     }
 
     /// Returns the number of rows in the table.
@@ -143,13 +150,13 @@ impl Table {
     }
 
     /// Inserts a new row at the specified index.
-    pub fn insert_row(&mut self, idx: usize, cells: Vec<Cell>) {
-        self.grid.insert_row(idx, cells.clone());
+    pub fn insert_row<C: Into<Vec<Cell>>>(&mut self, idx: usize, new_row: C) {
+        self.grid.insert_row(idx, new_row.into());
     }
 
     /// Appends a new row to the table.
-    pub fn push_row(&mut self, cells: Vec<Cell>) {
-        self.grid.insert_row(self.rows(), cells);
+    pub fn push_row<C: Into<Vec<Cell>>>(&mut self, new_row: C) {
+        self.grid.insert_row(self.rows(), new_row.into());
     }
 
     /// Removes a row from the table at the specified index.
@@ -161,9 +168,10 @@ impl Table {
     }
 
     /// Replaces a row at the specified index with a new row.
-    pub fn replace_row(&mut self, idx: usize, new_cells: Vec<Cell>) -> Option<Slice> {
-        self.insert_row(idx, new_cells);
-        self.remove_row(idx + 1)
+    pub fn replace_row<C: Into<Vec<Cell>>>(&mut self, idx: usize, new_row: C) -> Option<Slice> {
+        let old_row = self.remove_row(idx);
+        self.insert_row(idx, new_row);
+        old_row
     }
 
 }
@@ -225,29 +233,43 @@ mod tests {
     #[test]
     fn test_insert_col() {
         let mut table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
+        // insert using Vec<Cell>
         table.insert_col(1, vec![Cell::from("d"), Cell::from("4")]);
         assert_eq!(table.to_string(), r#"[["a","d","b","c"],["1","4","2","3"]]"#);
+        // insert using Slice
+        table.insert_col(1, Slice::from(vec!["e", "5"]));
+        assert_eq!(table.to_string(), r#"[["a","e","d","b","c"],["1","5","4","2","3"]]"#);
     }
 
     #[test]
     fn test_push_col() {
         let mut table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
+        // push using Vec<Cell>
         table.push_col(vec![Cell::from("d"), Cell::from("4")]);
         assert_eq!(table.to_string(), r#"[["a","b","c","d"],["1","2","3","4"]]"#);
+        // push using Slice
+        table.push_col(Slice::from(vec!["e", "5"]));
+        assert_eq!(table.to_string(), r#"[["a","b","c","d","e"],["1","2","3","4","5"]]"#);
     }
 
     #[test]
     fn test_remove_col() {
         let mut table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
-        table.remove_col(1);
+        assert!(table.remove_col(1).is_some());
+        assert_eq!(table.to_string(), r#"[["a","c"],["1","3"]]"#);
+        assert!(table.remove_col(2).is_none());
         assert_eq!(table.to_string(), r#"[["a","c"],["1","3"]]"#);
     }
 
     #[test]
     fn test_replace_col() {
         let mut table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
-        table.replace_col(1, vec![Cell::from("d"), Cell::from("4")]);
+        // replace using Vec<Cell>
+        assert!(table.replace_col(1, vec![Cell::from("d"), Cell::from("4")]).is_some());
         assert_eq!(table.to_string(), r#"[["a","d","c"],["1","4","3"]]"#);
+        // replace using Slice
+        assert!(table.replace_col(1, Slice::from(vec!["e", "5"])).is_some());
+        assert_eq!(table.to_string(), r#"[["a","e","c"],["1","5","3"]]"#);
     }
 
     #[test]
@@ -270,15 +292,23 @@ mod tests {
     #[test]
     fn test_insert_row() {
         let mut table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
+        // insert using Vec<Cell>
         table.insert_row(1, vec![Cell::from("d"), Cell::from("e"), Cell::from("4")]);
         assert_eq!(table.to_string(), r#"[["a","b","c"],["d","e","4"],["1","2","3"]]"#);
+        // insert using Slice
+        table.insert_row(1, Slice::from(vec!["f","g","5"]));
+        assert_eq!(table.to_string(), r#"[["a","b","c"],["f","g","5"],["d","e","4"],["1","2","3"]]"#);
     }
 
     #[test]
     fn test_push_row() {
         let mut table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
+        // push using Vec<Cell>
         table.push_row(vec![Cell::from("d"), Cell::from("e"), Cell::from("4")]);
         assert_eq!(table.to_string(), r#"[["a","b","c"],["1","2","3"],["d","e","4"]]"#);
+        // push using Slice
+        table.push_row(Slice::from(vec!["f","g","5"]));
+        assert_eq!(table.to_string(), r#"[["a","b","c"],["1","2","3"],["d","e","4"],["f","g","5"]]"#);
     }
 
     #[test]
@@ -291,8 +321,25 @@ mod tests {
     #[test]
     fn test_replace_row() {
         let mut table: Table = Table::try_from(r#"[["a","b","c"],["1","2","3"]]"#).unwrap();
+        // replace using Vec<Cell>
         table.replace_row(0, vec![Cell::from("d"), Cell::from("e"), Cell::from("4")]);
         assert_eq!(table.to_string(), r#"[["d","e","4"],["1","2","3"]]"#);
+        // replace using Slice
+        table.replace_row(0, Slice::from(vec!["f","g","5"]));
+        assert_eq!(table.to_string(), r#"[["f","g","5"],["1","2","3"]]"#);
+    }
+
+    #[test]
+    fn test_add() {
+        let mut table: Table = Table::try_from(r#"[["1","2","3"],["4","5","6"],["x","y","z"]]"#).unwrap();
+        let slice1 = table.row(0).unwrap();
+        let slice2 = table.row(1).unwrap();
+        let mut slice3 = &slice1 + &slice2;
+        table.replace_row(2, slice3.clone());
+        assert_eq!(table.to_string(), r#"[["1","2","3"],["4","5","6"],["5","7","9"]]"#);
+        slice3.add_value(Decimal::from(1));
+        table.replace_row(2, slice3);
+        assert_eq!(table.to_string(), r#"[["1","2","3"],["4","5","6"],["6","8","10"]]"#);
     }
 
 }
