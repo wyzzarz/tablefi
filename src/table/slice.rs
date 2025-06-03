@@ -1,6 +1,6 @@
 use rust_decimal::Decimal;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::ops::{Add, Sub, Mul, Div};
+use std::ops::{Add, Div, Mul, Sub};
 use super::cell::Cell;
 
 /// Represents a one-dimensional sequence of `Cell`s, typically a row or a column from a `Table`.
@@ -21,6 +21,10 @@ use super::cell::Cell;
 /// let slice2: Slice = Slice::try_from(r#"["4","5","6"]"#).unwrap();
 /// let mut slice3 = &slice1 + &slice2;
 /// slice3.add_value(Decimal::from(1));
+/// 
+/// // Find value in slice
+/// assert_eq!(slice3.find_value(&Decimal::from(8)), vec![1]);
+/// assert_eq!(slice3.contains_value(&Decimal::from(8)), true);
 /// ```
 #[derive(Clone, Debug, Default)]
 pub struct Slice {
@@ -318,6 +322,32 @@ impl Slice {
         self.cells.into_iter()
     }
 
+    /// Returns an array of indices where the value exists in the `Slice`.
+    /// 
+    /// Max limits the search of the values found.
+    fn _find_value<T: ?Sized>(&self, other_value: &T, max: Option<usize>) -> Vec<usize> where for<'r> &'r T: Into<Cell> {
+        let mut vec: Vec<usize> = Vec::new();
+        for (i, cell) in self.cells.iter().enumerate() {
+            if cell.equal_value(&other_value) {
+                vec.push(i);
+                if vec.len() == max.unwrap_or(usize::MAX) {
+                    return vec;
+                }
+            }
+        }
+        vec
+    }
+
+    /// Returns an array of indices where the value exists in the `Slice`.
+    pub fn find_value<T: ?Sized>(&self, other_value: &T) -> Vec<usize> where for<'r> &'r T: Into<Cell> {
+        self._find_value(other_value, None)
+    }
+
+    /// Whether the value exists in the `Slice`.
+    pub fn contains_value<T: ?Sized>(&self, other_value: &T) -> bool where for<'r> &'r T: Into<Cell> {
+        self._find_value(other_value, Some(1)).len() > 0
+    }
+
 }
 
 #[cfg(test)]
@@ -479,6 +509,22 @@ mod tests {
             }
         }
         assert_eq!(slice.to_string(), r#"["22","str","42"]"#);
+    }
+
+    #[test]
+    fn test_find_value() {
+        let slice: Slice = Slice::try_from(r#"["1","a","2","b","3","c","a","b","c"]"#).unwrap();
+        assert_eq!(slice.find_value("a"), vec![1, 6]);
+        assert_eq!(slice.find_value(&Decimal::from(2)), vec![2]);
+        assert_eq!(slice.find_value(&Cell::from("12345")).len(), 0);
+    }
+
+    #[test]
+    fn test_contains_value() {
+        let slice: Slice = Slice::try_from(r#"["1","a","2","b","3","c","a","b","c"]"#).unwrap();
+        assert_eq!(slice.contains_value("a"), true);
+        assert_eq!(slice.contains_value(&Decimal::from(2)), true);
+        assert_eq!(slice.contains_value(&Cell::from("12345")), false);
     }
 
 }
