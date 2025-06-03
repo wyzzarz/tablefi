@@ -1,6 +1,7 @@
 use grid::{Grid, Order};
 use serde::{ser::SerializeSeq, Deserialize, Deserializer, Serialize, Serializer};
 use std::io::Write;
+use std::usize;
 pub use super::Cell;
 pub use super::Slice;
 
@@ -26,6 +27,10 @@ pub use super::Slice;
 /// let mut slice = table.row(1).unwrap();
 /// slice.add_value(Decimal::from(1));
 /// table.replace_row(1, slice);
+/// 
+/// // find value in table
+/// assert_eq!(table.find_value(&Decimal::from(4)), vec![(1,2)]);
+/// assert_eq!(table.contains_value(&Decimal::from(4)), true);
 /// 
 /// // output table as csv
 /// let mut writer: Vec<u8> = Vec::new();
@@ -177,6 +182,34 @@ impl Table {
         let old_row = self.remove_row(idx);
         self.insert_row(idx, new_row);
         old_row
+    }
+
+    /// Returns an array of row and columnn tuples where the value exists in the `Table`.
+    /// 
+    /// Max limits the search of the values found.
+    fn _find_value<T: ?Sized>(&self, other_value: &T, max: Option<usize>) -> Vec<(usize, usize)> where for<'r> &'r T: Into<Cell> {
+        let mut vec: Vec<(usize, usize)> = Vec::new();
+        for (r, row_iter) in self.grid.iter_rows().enumerate() {
+            for (c, cell) in row_iter.enumerate() {
+                if cell.equal_value(&other_value) {
+                    vec.push((r, c));
+                    if vec.len() == max.unwrap_or(usize::MAX) {
+                        return vec;
+                    }
+                }
+            }
+        }
+        vec
+    }
+
+    /// Returns an array of row and columnn tuples where the value exists in the `Table`.
+    pub fn find_value<T: ?Sized>(&self, other_value: &T) -> Vec<(usize, usize)> where for<'r> &'r T: Into<Cell> {
+        self._find_value(other_value, None)
+    }
+
+    /// Whether the value exists in the `Table`.
+    pub fn contains_value<T: ?Sized>(&self, other_value: &T) -> bool where for<'r> &'r T: Into<Cell> {
+        self._find_value(other_value, Some(1)).len() > 0
     }
 
     /// Writes the table as csv.
@@ -381,6 +414,22 @@ mod tests {
         slice3.add_value(Decimal::from(1));
         table.replace_row(2, slice3);
         assert_eq!(table.to_string(), r#"[["1","2","3"],["4","5","6"],["6","8","10"]]"#);
+    }
+
+    #[test]
+    fn test_find_value() {
+        let table: Table = Table::try_from(r#"[["1","2","3"],["4","5","6"],["x","y","z"],["1","5","z"]]"#).unwrap();
+        assert_eq!(table.find_value(&Decimal::from(5)), vec![(1, 1), (3, 1)]);
+        assert_eq!(table.find_value("z"), vec![(2, 2), (3, 2)]);
+        assert_eq!(table.find_value("abc").len(), 0);
+    }
+
+    #[test]
+    fn test_contains_value() {
+        let table: Table = Table::try_from(r#"[["1","2","3"],["4","5","6"],["x","y","z"],["1","5","z"]]"#).unwrap();
+        assert_eq!(table.contains_value(&Decimal::from(5)), true);
+        assert_eq!(table.contains_value("z"), true);
+        assert_eq!(table.contains_value("abc"), false);
     }
 
     #[test]
