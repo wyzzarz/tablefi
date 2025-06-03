@@ -5,6 +5,15 @@ use serde_json::{Value};
 use std::ops::{Add, Sub, Mul, Div};
 use std::cmp::Ordering;
 use std::str::FromStr;
+use std::sync::LazyLock;
+
+static RE_NUMERIC_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"^[+-]?(?:(?:(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)|(?:\.\d+))$"#).unwrap()
+});
+
+static RE_STRIP_CHARS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"[^0-9+.-]").unwrap()
+});
 
 pub const DIV0: &str = "#DIV/0";
 
@@ -36,8 +45,8 @@ pub const DIV0: &str = "#DIV/0";
 /// number3.add_value(Decimal::from(8));
 /// 
 /// // Comparing cell values
-/// assert_eq!(number3.compare_value(Decimal::new(123456, 3)), Some(Ordering::Greater));
-/// assert_eq!(number3.equal_value(Decimal::new(139456, 3)), true);
+/// assert_eq!(number3.compare_value(&Decimal::new(123456, 3)), Some(Ordering::Greater));
+/// assert_eq!(number3.equal_value(&Decimal::new(139456, 3)), true);
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub enum Cell {
@@ -98,24 +107,32 @@ impl ToString for Cell {
 
 }
 
+fn cell_from_string(s_ref: &str) -> Cell {
+    // filter for number pattern like (+/-)123,456.789
+    if RE_NUMERIC_PATTERN.is_match(s_ref) {
+        // strip unecessary characters appropriate for decimal
+        let stripped = RE_STRIP_CHARS.replace_all(s_ref, "");
+        if let Ok(d) = Decimal::from_str(&stripped) {
+            return Cell::Number(d);
+        }
+    }
+    // otherwise return text
+    Cell::Text(s_ref.to_string())
+}
+
+
 impl From<String> for Cell {
 
     fn from(s: String) -> Self {
-        // filter for number pattern like (+/-)123,456.789
-        let re = Regex::new(r#"^[+-]?(?:(?:(?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?)|(?:\.\d+))$"#).unwrap();
-        if re.is_match(&s) {
-            // strip unecessary characters appropriate for decimal
-            let re = Regex::new(r"[^0-9+.-]").unwrap();
-            let new_s = re.replace_all(&s, "").into_owned();
-            let d = Decimal::from_str(&new_s);
-            if d.is_ok() {
-                // return this decimal
-                return Cell::Number(d.unwrap());
-            }
-        }
+        cell_from_string(s.as_str())
+    }
 
-        // otherwise return text
-        Cell::Text(s)
+}
+
+impl<'a> From<&'a String> for Cell {
+
+    fn from(s_ref: &'a String) -> Self {
+        cell_from_string(s_ref.as_str())
     }
 
 }
@@ -128,10 +145,26 @@ impl From<&str> for Cell {
 
 }
 
+impl<'a> From<&'a Decimal> for Cell {
+
+    fn from(d_ref: &'a Decimal) -> Self {
+        Cell::Number(*d_ref)
+    }
+
+}
+
 impl From<Decimal> for Cell {
 
     fn from(n: Decimal) -> Self {
         Cell::Number(n)
+    }
+
+}
+
+impl<'a> From<&'a Cell> for Cell {
+
+    fn from(c_ref: &'a Cell) -> Self {
+        c_ref.clone()
     }
 
 }
@@ -284,13 +317,13 @@ impl Cell {
     /// assert_eq!(Cell::from("10").compare_value("5"), Some(Ordering::Greater));
     /// assert_eq!(Cell::from("apple").compare_value("banana"), Some(Ordering::Less));
     /// assert_eq!(Cell::from("10").compare_value("banana"), None);
-    /// assert_eq!(Cell::Number(Decimal::new(5,0)).compare_value(Decimal::new(5,0)), Some(Ordering::Equal));
+    /// assert_eq!(Cell::Number(Decimal::new(5,0)).compare_value(&Decimal::new(5,0)), Some(Ordering::Equal));
     /// ```
-    pub fn compare_value<T: Into<Cell>>(&self, other_value: T) -> Option<Ordering> {
+    pub fn compare_value<T: ?Sized>(&self, other_value: &T) -> Option<Ordering> where for<'r> &'r T: Into<Cell> {
         let other_cell: Cell = other_value.into();
-        match (self, &other_cell) {
-            (Cell::Number(n1), Cell::Number(n2)) => n1.partial_cmp(n2),
-            (Cell::Text(s1), Cell::Text(s2)) => s1.partial_cmp(s2),
+        match (self, other_cell) {
+            (Cell::Number(n1), Cell::Number(n2)) => n1.partial_cmp(&n2),
+            (Cell::Text(s1), Cell::Text(s2)) => s1.partial_cmp(&s2),
             _ => None, // Mismatched types (Number vs Text or Text vs Number)
         }
     }
@@ -298,7 +331,7 @@ impl Cell {
     /// Whether the value of this cell is equal to another value.
     /// 
     /// The `other_value` can be a `String`, `&str`, `Decimal`, or another `Cell`.
-    pub fn equal_value<T: Into<Cell>>(&self, other_value: T) -> bool {
+    pub fn equal_value<T: ?Sized>(&self, other_value: &T) -> bool where for<'r> &'r T: Into<Cell> {
         self.compare_value(other_value) == Some(Ordering::Equal)
     }
 
@@ -465,52 +498,52 @@ mod tests {
         let num_5 = Cell::from(dec_5);
 
         // Number comparisons
-        assert_eq!(num_10.compare_value(num_5.clone()), Some(Ordering::Greater));
-        assert_eq!(num_5.compare_value(num_10.clone()), Some(Ordering::Less));
-        assert_eq!(num_10.compare_value(Cell::from("10.0")), Some(Ordering::Equal));
+        assert_eq!(num_10.compare_value(&num_5), Some(Ordering::Greater));
+        assert_eq!(num_5.compare_value(&num_10), Some(Ordering::Less));
+        assert_eq!(num_10.compare_value(&Cell::from("10.0")), Some(Ordering::Equal));
 
         // Number vs Decimal
-        assert_eq!(num_10.compare_value(Decimal::from(5)), Some(Ordering::Greater));
-        assert_eq!(num_10.compare_value(Decimal::from(10)), Some(Ordering::Equal));
-        assert_eq!(num_10.compare_value(Decimal::from(20)), Some(Ordering::Less));
+        assert_eq!(num_10.compare_value(&Decimal::from(5)), Some(Ordering::Greater));
+        assert_eq!(num_10.compare_value(&Decimal::from(10)), Some(Ordering::Equal));
+        assert_eq!(num_10.compare_value(&Decimal::from(20)), Some(Ordering::Less));
 
         // Number vs String (numeric)
         assert_eq!(num_10.compare_value("5"), Some(Ordering::Greater));
         assert_eq!(num_10.compare_value("10.0"), Some(Ordering::Equal));
         assert_eq!(num_10.compare_value("20"), Some(Ordering::Less));
-
+        
         // Number vs String (non-numeric)
         assert_eq!(num_10.compare_value("abc"), None);
-        assert_eq!(num_10.compare_value("abc".to_string()), None);
-        assert_eq!(num_10.compare_value(Cell::from("abc")), None);
+        assert_eq!(num_10.compare_value(&"abc".to_string()), None);
+        assert_eq!(num_10.compare_value(&Cell::from("abc")), None);
     }
 
     #[test]
     fn test_compare_value_text() {
         // text
-        let str_apple = "apple";
-        let str_banana = "banana";
+        let str_apple = "apple"; // &str
+        let str_banana = "banana"; // &str
         let text_apple = Cell::from(str_apple);
         let text_banana = Cell::from(str_banana);
 
         // Text comparisons
-        assert_eq!(text_apple.compare_value(text_banana.clone()), Some(Ordering::Less));
-        assert_eq!(text_banana.compare_value(text_apple.clone()), Some(Ordering::Greater));
-        assert_eq!(text_apple.compare_value(Cell::Text("apple".to_string())), Some(Ordering::Equal));
-
+        assert_eq!(text_apple.compare_value(&text_banana), Some(Ordering::Less));
+        assert_eq!(text_banana.compare_value(&text_apple), Some(Ordering::Greater));
+        assert_eq!(text_apple.compare_value(&Cell::Text("apple".to_string())), Some(Ordering::Equal));
+        
         // Text vs str
         assert_eq!(text_apple.compare_value("banana"), Some(Ordering::Less));
         assert_eq!(text_apple.compare_value("apple"), Some(Ordering::Equal));
         assert_eq!(text_banana.compare_value("apple"), Some(Ordering::Greater));
 
         // Text vs String
-        assert_eq!(text_apple.compare_value("banana".to_string()), Some(Ordering::Less));
-        assert_eq!(text_apple.compare_value("apple".to_string()), Some(Ordering::Equal));
-        assert_eq!(text_banana.compare_value("apple".to_string()), Some(Ordering::Greater));
+        assert_eq!(text_apple.compare_value(&"banana".to_string()), Some(Ordering::Less));
+        assert_eq!(text_apple.compare_value(&"apple".to_string()), Some(Ordering::Equal));
+        assert_eq!(text_banana.compare_value(&"apple".to_string()), Some(Ordering::Greater));
 
         // Text vs Number
-        assert_eq!(text_apple.compare_value(Cell::from("10")), None);
-        assert_eq!(text_apple.compare_value(Decimal::from(10)), None);
+        assert_eq!(text_apple.compare_value(&Cell::from("10")), None);
+        assert_eq!(text_apple.compare_value(&Decimal::from(10)), None);
     }
 
     #[test]
@@ -528,43 +561,43 @@ mod tests {
         let text_banana = Cell::from(str_banana);
 
         // Number comparisons
-        assert_eq!(num_10.equal_value(num_5.clone()), false);
-        assert_eq!(num_5.equal_value(num_10.clone()), false);
-        assert_eq!(num_10.equal_value(Cell::from("10.0")), true);
+        assert_eq!(num_10.equal_value(&num_5), false);
+        assert_eq!(num_5.equal_value(&num_10), false);
+        assert_eq!(num_10.equal_value(&Cell::from("10.0")), true);
 
         // Number vs Decimal
-        assert_eq!(num_10.equal_value(Decimal::from(5)), false);
-        assert_eq!(num_10.equal_value(Decimal::from(10)), true);
-        assert_eq!(num_10.equal_value(Decimal::from(20)), false);
+        assert_eq!(num_10.equal_value(&Decimal::from(5)), false);
+        assert_eq!(num_10.equal_value(&Decimal::from(10)), true);
+        assert_eq!(num_10.equal_value(&Decimal::from(20)), false);
 
         // Number vs String (numeric)
         assert_eq!(num_10.equal_value("5"), false);
         assert_eq!(num_10.equal_value("10.0"), true);
         assert_eq!(num_10.equal_value("20"), false);
-
+        
         // Number vs String (non-numeric)
         assert_eq!(num_10.equal_value("abc"), false);
-        assert_eq!(num_10.equal_value("abc".to_string()), false);
-        assert_eq!(num_10.equal_value(Cell::from("abc")), false);
+        assert_eq!(num_10.equal_value(&"abc".to_string()), false);
+        assert_eq!(num_10.equal_value(&Cell::from("abc")), false);
 
         // Text comparisons
-        assert_eq!(text_apple.equal_value(text_banana.clone()), false);
-        assert_eq!(text_banana.equal_value(text_apple.clone()), false);
-        assert_eq!(text_apple.equal_value(Cell::Text("apple".to_string())), true);
-
+        assert_eq!(text_apple.equal_value(&text_banana), false);
+        assert_eq!(text_banana.equal_value(&text_apple), false);
+        assert_eq!(text_apple.equal_value(&Cell::Text("apple".to_string())), true);
+        
         // Text vs str
         assert_eq!(text_apple.equal_value("banana"), false);
         assert_eq!(text_apple.equal_value("apple"), true);
         assert_eq!(text_banana.equal_value("apple"), false);
-
+        
         // Text vs String
-        assert_eq!(text_apple.equal_value("banana".to_string()), false);
-        assert_eq!(text_apple.equal_value("apple".to_string()), true);
-        assert_eq!(text_banana.equal_value("apple".to_string()), false);
+        assert_eq!(text_apple.equal_value(&"banana".to_string()), false);
+        assert_eq!(text_apple.equal_value(&"apple".to_string()), true);
+        assert_eq!(text_banana.equal_value(&"apple".to_string()), false);
 
         // Text vs Number
-        assert_eq!(text_apple.equal_value(Cell::from("10")), false);
-        assert_eq!(text_apple.equal_value(Decimal::from(10)), false);
+        assert_eq!(text_apple.equal_value(&Cell::from("10")), false);
+        assert_eq!(text_apple.equal_value(&Decimal::from(10)), false);
     }
 
 }
