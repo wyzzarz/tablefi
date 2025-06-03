@@ -1,3 +1,5 @@
+[![Rust](https://github.com/wyzzarz/tablefi/actions/workflows/rust.yml/badge.svg)](https://github.com/wyzzarz/tablefi/actions/workflows/rust.yml)
+
 tablefi
 =======
 
