@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025 open_source_rs Zee <open_source_rs@zoynk.com>
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
 [package]
 name = "tablefi"
 version = "0.3.1"

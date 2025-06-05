@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Warner Zee <warner@zoynk.com>
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
 use rust_decimal::Decimal;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::ops::{Add, Div, Mul, Sub};
